@@ -1,5 +1,6 @@
 import threading
-from Queue import Queue
+from Queue import Empty
+from multiprocessing import Queue
 
 import requests
 from bs4 import SoupStrainer, BeautifulSoup
@@ -9,46 +10,50 @@ from concurrent.futures import ThreadPoolExecutor
 class ThreadCrawler:
 
     def __init__(self, input_url, max_threads):
-        self.wait_queue = Queue()
+        self.wait_queue = []
         self.initial_url = input_url
         self.max_threads = max_threads
-        self.thread_executor = ThreadPoolExecutor(max_workers = self.max_threads)
+        self.thread_executor = ThreadPoolExecutor(max_workers = 20)
         self.crawled_pages = set()
-        self.enqueue(self.initial_url)
+        self.wait_queue.append(self.initial_url)
         self.print_lock = threading.Lock()
 
-    def enqueue(self, url):
-        self.wait_queue.put(url)
 
-    def dequeue(self):
-        return self.wait_queue.get()
+    def scrape_info(self, url):
+        res = requests.get(url, timeout=(3, 30))
+        html = res.text
 
-    def scrap(self, url):
-        res = requests.get(url)
-
-        base_page = res.text
         only_a_tags = SoupStrainer('a')  # Filter and get only the anchor tags
 
         # parse the html using beautiful soup and store in variable `soup`
-        soup = BeautifulSoup(base_page, "html.parser", parse_only=only_a_tags)
-
+        soup = BeautifulSoup(html, "html.parser")
+        href_links = soup.find_all('a', href=True)
         temp_set = set()
-
         # Iterate over the filtered tags (only anchors)
-        for anchors in soup:
-            if anchors.has_attr('href') and anchors['href'].startswith('http'):
-                if anchors['href'] not in temp_set:
+        for anchors in href_links:
+            if anchors['href'].startswith('http') and anchors['href'] not in self.crawled_pages:
                     temp_set.add(anchors['href'])
-                    self.enqueue(anchors['href'])
-        print(url)
-
+                    self.wait_queue.append(anchors['href'])
+        self.print_lock.acquire()
+        print (url)
         for i in temp_set:
             print('\t' + i)
+        self.print_lock.release()
 
+        self.crawl()
 
     def crawl(self):
-        cur_url = self.dequeue()
-        if cur_url not in self.crawled_pages:
-            self.crawled_pages.add(cur_url)
-            task = self.thread_executor.submit(self.scrap(cur_url))
-            
+        while True:
+            try:
+                if len(self.wait_queue) == 0:
+                    break
+                cur_url = self.wait_queue.pop(0)
+                if cur_url not in self.crawled_pages:
+                    self.crawled_pages.add(cur_url)
+                    task = self.thread_executor.submit(self.scrape_info, cur_url)
+                    # task.add_done_callback(self.post_scrape_callback)
+            except Empty:
+                return
+            except Exception as e:
+                print(e)
+                continue
