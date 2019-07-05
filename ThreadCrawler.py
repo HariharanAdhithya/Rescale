@@ -4,7 +4,7 @@ from multiprocessing import Queue
 
 import requests
 from bs4 import SoupStrainer, BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, ALL_COMPLETED
 
 
 class ThreadCrawler:
@@ -23,8 +23,6 @@ class ThreadCrawler:
         res = requests.get(url, timeout=(3, 30))
         html = res.text
 
-        only_a_tags = SoupStrainer('a')  # Filter and get only the anchor tags
-
         # parse the html using beautiful soup and store in variable `soup`
         soup = BeautifulSoup(html, "html.parser")
         href_links = soup.find_all('a', href=True)
@@ -34,26 +32,28 @@ class ThreadCrawler:
             if anchors['href'].startswith('http') and anchors['href'] not in self.crawled_pages:
                     temp_set.add(anchors['href'])
                     self.wait_queue.append(anchors['href'])
+
         self.print_lock.acquire()
         print (url)
         for i in temp_set:
             print('\t' + i)
         self.print_lock.release()
 
-        self.crawl()
-
-    def crawl(self):
-        while True:
-            try:
-                if len(self.wait_queue) == 0:
-                    break
+        if len(self.wait_queue) != 0:
+            while self.wait_queue:
                 cur_url = self.wait_queue.pop(0)
                 if cur_url not in self.crawled_pages:
                     self.crawled_pages.add(cur_url)
-                    task = self.thread_executor.submit(self.scrape_info, cur_url)
-                    # task.add_done_callback(self.post_scrape_callback)
-            except Empty:
-                return
-            except Exception as e:
-                print(e)
-                continue
+                    self.thread_executor.submit(self.scrape_info, cur_url)
+
+
+    def crawl(self):
+        try:
+            cur_url = self.wait_queue.pop(0)
+            if cur_url not in self.crawled_pages:
+                self.crawled_pages.add(cur_url)
+                self.thread_executor.submit(self.scrape_info, cur_url)
+        except Empty:
+            return
+        except Exception as e:
+            print(e)
