@@ -1,10 +1,26 @@
+import argparse
+
 from ThreadCrawler import ThreadCrawler
 
 
-# base_url = "http://triplebyte.github.io/web-crawler-test-site/already-passing-tests/"
-#
-base_url = "http://www.rescale.com/"
+def main():
+    """
+    Parses the command line argument, initializes the class object and starts the crawling
+    :return: None
+    """
+    parser = argparse.ArgumentParser()
 
-job = ThreadCrawler(100)
+    parser.add_argument("target")
+    parser.add_argument("--number_of_threads")
 
-job.crawl(base_url)
+    args = parser.parse_args()
+
+    base_url = args.target
+
+    job = ThreadCrawler(args.number_of_threads or 5)
+
+    job.crawl(base_url)
+
+
+if __name__ == '__main__':
+    main()
