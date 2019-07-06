@@ -24,10 +24,12 @@ class ThreadCrawler:
         :param html: HTML page of the current URL
         :return: None. Print the links to stdout
         """
+
         # parse the html using beautiful soup and store in variable `soup`
         soup = BeautifulSoup(html, "html.parser")
         href_links = soup.find_all('a', href=True)
 
+        # Making the check for crawled pages and printing the links synchronous
         with self.check_lock:
             print (url)
             for anchors in href_links:
@@ -37,6 +39,7 @@ class ThreadCrawler:
                         self.crawled_pages.add(anchors['href'])
                     print('\t' + anchors['href'])
 
+        # Calling other threads if the queue is not empty
         while not self.wait_queue.empty():
             cur_url = self.wait_queue.get()
             self.thread_executor.submit(self.get_page, cur_url)
